@@ -1,0 +1,42 @@
+name: HK open paper trader
+
+on:
+  schedule:
+    # Two start times (UTC, weekdays). Both start long before 01:02 so GitHub's
+    # usual delays do not matter; the script itself waits for 01:02:00 sharp.
+    - cron: "12 0 * * 1-5"
+    - cron: "42 0 * * 1-5"
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "check = test Binance access | dry = fake 10 s run | session = real session now | report = rebuild summary"
+        default: check
+        type: choice
+        options: [check, dry, session, report]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: paper-session
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 170
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run
+        run: python3 paper_trader.py ${{ github.event.inputs.mode || 'session' }}
+
+      - name: Save results to the repo
+        if: always()
+        run: |
+          git config user.name "paper-bot"
+          git config user.email "paper-bot@users.noreply.github.com"
+          git add data
+          if git diff --cached --quiet; then echo "nothing to save"; exit 0; fi
+          git commit -m "paper data $(date -u +%F)"
+          for i in 1 2 3; do git pull --rebase --autostash -q && git push && break || sleep 5; done
