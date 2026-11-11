@@ -1,0 +1,672 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>HK Open Paper Trader</title>
+<style>
+:root{
+  --bg:#f6f7f9; --card:#ffffff; --ink:#15181d; --mute:#5d6673; --line:#e1e5ea;
+  --accent:#1f6feb; --good:#15803d; --bad:#b42318; --warn:#a15c00; --chip:#eef1f5;
+  --goodbg:#e7f6ec; --badbg:#fdecea; --warnbg:#fff4e0;
+}
+@media (prefers-color-scheme:dark){
+  :root{
+    --bg:#0f1216; --card:#171b21; --ink:#e8ecf1; --mute:#98a2b0; --line:#2a313b;
+    --accent:#58a6ff; --good:#4ade80; --bad:#f87171; --warn:#fbbf24; --chip:#222932;
+    --goodbg:#10301d; --badbg:#3a1613; --warnbg:#352a0f;
+  }
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+.wrap{max-width:1050px;margin:0 auto;padding:14px 14px 60px}
+h1{font-size:20px;margin:6px 0 2px}
+h2{font-size:15px;margin:0 0 10px;letter-spacing:.2px}
+.sub{color:var(--mute);font-size:13px;margin-bottom:12px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px;margin:12px 0}
+.grid{display:grid;gap:12px}
+.g3{grid-template-columns:repeat(auto-fit,minmax(200px,1fr))}
+.big{font-size:26px;font-weight:650;font-variant-numeric:tabular-nums}
+.lbl{color:var(--mute);font-size:12px;text-transform:uppercase;letter-spacing:.5px}
+.chip{display:inline-block;padding:2px 9px;border-radius:99px;background:var(--chip);font-size:12px}
+.chip.good{background:var(--goodbg);color:var(--good)} .chip.bad{background:var(--badbg);color:var(--bad)} .chip.warn{background:var(--warnbg);color:var(--warn)}
+.banner{padding:10px 12px;border-radius:10px;margin:10px 0;font-size:14px}
+.banner.warn{background:var(--warnbg);color:var(--warn)} .banner.bad{background:var(--badbg);color:var(--bad)} .banner.good{background:var(--goodbg);color:var(--good)}
+table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums;font-size:13px}
+th,td{padding:6px 8px;border-bottom:1px solid var(--line);text-align:right;white-space:nowrap}
+th:first-child,td:first-child{text-align:left}
+th{color:var(--mute);font-weight:600;font-size:12px}
+.scroll{overflow-x:auto;max-width:100%}
+.pos{color:var(--good)} .neg{color:var(--bad)}
+button{font:inherit;padding:8px 12px;border-radius:8px;border:1px solid var(--line);background:var(--chip);color:var(--ink);cursor:pointer}
+button:hover{border-color:var(--accent)}
+button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+button.danger{color:var(--bad)}
+.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+input[type=number]{font:inherit;width:90px;padding:7px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--ink)}
+.bar{height:10px;background:var(--chip);border-radius:99px;overflow:hidden}
+.bar>i{display:block;height:100%;background:var(--accent)}
+pre{margin:0;font:12px/1.5 ui-monospace,Menlo,Consolas,monospace;white-space:pre-wrap;max-height:260px;overflow:auto}
+.rule li{margin:3px 0}
+small,.mute{color:var(--mute)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>HK Open Paper Trader</h1>
+  <div class="sub">Records what a short-only “fade the overnight gap” trade would really get at the Hong Kong open. It places <b>no orders</b> and uses <b>no API keys</b>: only public Binance prices. Research tool, not financial advice.</div>
+
+  <div id="banners"></div>
+
+  <div class="card">
+    <div class="grid g3">
+      <div><div class="lbl">UTC time</div><div class="big" id="clkUtc">--:--:--</div></div>
+      <div><div class="lbl">Pakistan time (UTC+5)</div><div class="big" id="clkPkt">--:--:--</div></div>
+      <div><div class="lbl">Next event</div><div class="big" id="nextEv">…</div><div class="mute" id="nextEvSub"></div></div>
+    </div>
+    <div class="row" style="margin-top:10px">
+      <span class="chip" id="phaseChip">starting</span>
+      <span class="chip" id="visChip"></span>
+      <span class="chip" id="lockChip">screen lock: off</span>
+      <span class="chip" id="clkChip">clock: not synced yet</span>
+      <span class="mute" id="sessLine"></span>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>The frozen rule (RULE-B). Do not change it while collecting data.</h2>
+    <ol class="rule" style="margin:0;padding-left:20px">
+      <li>On weekdays at <b>01:02:00 UTC</b> (06:02 AM Pakistan), compare each futures price with its <b>previous weekday 08:00 UTC price</b> (the Hong Kong close).</li>
+      <li>If the price is <b>1.0% or more ABOVE</b> that close: paper <b>SHORT</b>. Otherwise no trade. (Prices 1% or more below are logged as “shadow long” only, to keep checking that the long side loses.)</li>
+      <li>Paper exits: <b>01:32:00 UTC</b> (comparison) and <b>02:00:00 UTC</b> (main).</li>
+      <li>Fills use the real order book for your chosen $ size, plus 0.10% fees round trip. The point is to measure real slippage.</li>
+    </ol>
+  </div>
+
+  <div class="card">
+    <h2>Live prices <span class="mute" id="watchAge"></span></h2>
+    <div class="scroll"><table id="watchTbl"><thead><tr>
+      <th>Symbol</th><th>Bid</th><th>Ask</th><th>Spread</th><th>Prior HK close</th><th>Gap vs close</th><th>Signal</th>
+    </tr></thead><tbody></tbody></table></div>
+  </div>
+
+  <div class="card">
+    <h2>Results (real order-book fills, short trades only)</h2>
+    <div class="row" style="margin-bottom:8px">
+      <div style="flex:1;min-width:200px"><div class="bar"><i id="progBar" style="width:0%"></i></div></div>
+      <span id="progTxt" class="mute"></span>
+    </div>
+    <div id="guidance"></div>
+    <div class="scroll"><table id="statsTbl"><thead><tr>
+      <th>Exit</th><th>Trades</th><th>Days</th><th>Avg net / trade</th><th>Avg net / day</th><th>t-stat</th><th>Win rate</th><th>Avg win</th><th>Avg loss</th><th>Worst trade</th><th>Ideal mid→mid</th><th>Slippage cost</th><th>Avg $ / trade</th>
+    </tr></thead><tbody></tbody></table></div>
+    <div class="mute" style="margin-top:6px">“Net” = after fees and real order-book fills. “Ideal” = mid-price to mid-price, what the backtest assumed. “Slippage cost” = ideal minus real. $ per trade uses your position size below.</div>
+  </div>
+
+  <div class="card">
+    <h2>Trade log</h2>
+    <div class="scroll"><table id="tradeTbl"><thead><tr>
+      <th>Date</th><th>Symbol</th><th>Side</th><th>Gap</th><th>Top-1</th><th>Entry (real fill)</th><th>Exit 01:32</th><th>Net 01:32</th><th>Exit 02:00</th><th>Net 02:00</th>
+    </tr></thead><tbody></tbody></table></div>
+    <div class="mute" id="tradeNote" style="margin-top:6px"></div>
+  </div>
+
+  <div class="card">
+    <h2>Tools</h2>
+    <div class="row">
+      <button id="btnTest" class="primary">1. Test connection</button>
+      <button id="btnDry">2. Dry run (about 10 s, not saved)</button>
+      <button id="btnLock">Keep screen awake</button>
+      <label class="mute">Position size $ <input id="inNotional" type="number" min="5" step="5" value="100"></label>
+    </div>
+    <div class="row" style="margin-top:8px">
+      <button id="btnCsv">Export CSV</button>
+      <button id="btnBackup">Backup JSON</button>
+      <button id="btnRestore">Restore JSON</button>
+      <input id="fileRestore" type="file" accept="application/json" hidden>
+      <button id="btnReset" class="danger">Reset all data</button>
+    </div>
+    <div class="mute" style="margin-top:8px">Data is saved <b>in this browser only</b> (on this device). Use the same browser every day and press Backup JSON about once a week.</div>
+  </div>
+
+  <div class="card"><h2>Activity log</h2><pre id="log"></pre></div>
+</div>
+
+<script>
+"use strict";
+/* =====================================================================
+   HK OPEN PAPER TRADER  (static page, no build, no keys, no orders)
+   Frozen rule. Change nothing here while a test is running.
+   ===================================================================== */
+const CFG = Object.freeze({
+  SYMBOLS: ["HK1810USDT", "ZHONGJIUSDT", "ZHIPUUSDT", "MINIMAXUSDT", "BYDUSDT"],
+  ENTRY: "01:02:00", EXIT_A: "01:32:00", EXIT_B: "02:00:00",     // UTC
+  REF_TIME: "08:00:00",                                          // previous weekday, UTC
+  GAP_MIN: 1.0,                 // percent above prior close to short
+  FEE_PCT: 0.10,                // round-trip taker fees, percent
+  MAX_LATE_ENTRY_SEC: 20,       // entry later than this is skipped (no look-ahead)
+  MAX_LATE_EXIT_SEC: 120,       // exit later than this is saved but not counted
+  STALE_EXIT_SEC: 600,          // exit older than this is marked missed
+  // Hong Kong market holidays on weekdays: CHECK the HKEX calendar and edit this list.
+  HOLIDAYS: ["2026-12-25", "2027-01-01"],
+  API: "https://fapi.binance.com",
+  STORE: "hkopen_paper_v1",
+  TARGET_DAYS: 20
+});
+
+let clockOffset = 0, clockKnown = false;
+const nowMs = () => (typeof window.__fakeNow === "number" ? window.__fakeNow : Date.now() + clockOffset);
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+/* ---------------- time helpers (all UTC) ---------------- */
+const pad = (n) => String(n).padStart(2, "0");
+const ymd = (d) => d.getUTCFullYear() + "-" + pad(d.getUTCMonth() + 1) + "-" + pad(d.getUTCDate());
+const atUtc = (ds, hms) => Date.parse(ds + "T" + hms + "Z");
+const hms = (ms, offsetH = 0) => { const d = new Date(ms + offsetH * 3600e3); return pad(d.getUTCHours()) + ":" + pad(d.getUTCMinutes()) + ":" + pad(d.getUTCSeconds()); };
+const isWeekday = (d) => { const w = d.getUTCDay(); return w !== 0 && w !== 6; };
+function prevWeekday(ds) {
+  let d = new Date(ds + "T00:00:00Z");
+  do { d = new Date(d.getTime() - 864e5); } while (!isWeekday(d));
+  return ymd(d);
+}
+function sessionDateFor(now) {
+  const t = new Date(now);
+  const base = Date.UTC(t.getUTCFullYear(), t.getUTCMonth(), t.getUTCDate());
+  for (let i = 0; i < 20; i++) {
+    const d = new Date(base + i * 864e5), ds = ymd(d);
+    if (!isWeekday(d) || CFG.HOLIDAYS.includes(ds)) continue;
+    if (atUtc(ds, CFG.EXIT_B) + 600e3 > now) return ds;
+  }
+  return ymd(new Date(base));
+}
+function human(ms) {
+  if (ms < 0) ms = 0;
+  const s = Math.floor(ms / 1000), d = Math.floor(s / 86400), h = Math.floor((s % 86400) / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60;
+  return (d ? d + "d " : "") + (h || d ? pad(h) + ":" : "") + pad(m) + ":" + pad(sec);
+}
+
+/* ---------------- storage ---------------- */
+let memStore = null, storageOk = true;
+function freshStore() { return { version: 1, settings: { notional: 100 }, sessions: {} }; }
+function loadStore() {
+  try {
+    const raw = localStorage.getItem(CFG.STORE);
+    if (!raw) return freshStore();
+    const s = JSON.parse(raw);
+    if (!s || typeof s !== "object" || !s.sessions) return freshStore();
+    s.settings = s.settings || { notional: 100 };
+    return s;
+  } catch (e) { storageOk = false; return memStore || freshStore(); }
+}
+let store = loadStore();
+function saveStore() {
+  memStore = store;
+  try { localStorage.setItem(CFG.STORE, JSON.stringify(store)); storageOk = true; }
+  catch (e) { storageOk = false; }
+}
+
+/* ---------------- logging ---------------- */
+const logLines = [];
+function log(msg) {
+  const line = hms(nowMs()) + " UTC  " + msg;
+  logLines.push(line);
+  if (logLines.length > 200) logLines.shift();
+  const el = $("log");
+  if (el) { el.textContent = logLines.slice().reverse().join("\n"); }
+}
+
+/* ---------------- Binance public API ---------------- */
+async function api(path, timeoutMs = 8000) {
+  const ctrl = new AbortController();
+  const tm = setTimeout(() => ctrl.abort(), timeoutMs);
+  try {
+    const r = await fetch(CFG.API + path, { signal: ctrl.signal, cache: "no-store" });
+    if (!r.ok) throw new Error("HTTP " + r.status + (r.status === 451 || r.status === 403 ? " (blocked in this region?)" : ""));
+    return await r.json();
+  } finally { clearTimeout(tm); }
+}
+function fillPrice(levels, notional) {
+  let rem = notional, qty = 0, cost = 0;
+  for (const lv of levels) {
+    const price = +lv[0], avail = price * +lv[1];
+    if (!(price > 0)) continue;
+    const take = Math.min(rem, avail);
+    qty += take / price; cost += take; rem -= take;
+    if (rem <= 1e-9) break;
+  }
+  if (qty <= 0) return { price: NaN, ok: false };
+  return { price: cost / qty, ok: rem <= 1e-6 };
+}
+async function snapshot(sym, notional) {
+  const t0 = nowMs();
+  const [bk, dp] = await Promise.all([
+    api("/fapi/v1/ticker/bookTicker?symbol=" + sym),
+    api("/fapi/v1/depth?symbol=" + sym + "&limit=20")
+  ]);
+  const t1 = nowMs();
+  const bid = +bk.bidPrice, ask = +bk.askPrice, mid = (bid + ask) / 2;
+  const sell = fillPrice(dp.bids || [], notional), buy = fillPrice(dp.asks || [], notional);
+  return {
+    t: t1, latMs: t1 - t0, bid, ask, mid, spreadPct: (ask / bid - 1) * 100,
+    vwapSell: sell.price, vwapBuy: buy.price, depthOk: sell.ok && buy.ok
+  };
+}
+const refCache = {};   // refCache[sessionDate][sym] = {price, ok, note}
+async function loadRef(ds, sym, force) {
+  refCache[ds] = refCache[ds] || {};
+  if (!force && refCache[ds][sym] && refCache[ds][sym].ok) return refCache[ds][sym];
+  const pd = prevWeekday(ds), want = atUtc(pd, CFG.REF_TIME);
+  if (want > nowMs()) {
+    refCache[ds][sym] = { price: NaN, ok: false, pending: true, note: "not available yet: that close is at " + pd + " " + CFG.REF_TIME.slice(0, 5) + " UTC" };
+    return refCache[ds][sym];
+  }
+  try {
+    const k = await api("/fapi/v1/klines?symbol=" + sym + "&interval=1m&startTime=" + want + "&limit=1");
+    if (!Array.isArray(k) || !k.length) throw new Error("no candle returned");
+    const diff = Math.abs(k[0][0] - want);
+    if (diff > 60e3) throw new Error("candle is " + Math.round(diff / 60e3) + " min away from 08:00");
+    refCache[ds][sym] = { price: +k[0][1], ok: true, note: pd + " 08:00 open" };
+  } catch (e) {
+    refCache[ds][sym] = { price: NaN, ok: false, note: String(e.message || e) };
+  }
+  return refCache[ds][sym];
+}
+
+async function syncClock() {
+  try {
+    const t0 = Date.now();
+    const r = await api("/fapi/v1/time", 5000);
+    const t1 = Date.now();
+    clockOffset = r.serverTime - (t0 + t1) / 2; clockKnown = true;
+    const el = $("clkChip");
+    if (el) {
+      el.textContent = "clock vs Binance: " + (clockOffset >= 0 ? "+" : "") + Math.round(clockOffset) + " ms (auto-corrected)";
+      el.className = "chip" + (Math.abs(clockOffset) > 2000 ? " warn" : " good");
+    }
+  } catch (e) { const el = $("clkChip"); if (el) { el.textContent = "clock sync failed"; el.className = "chip warn"; } }
+}
+
+/* ---------------- sessions ---------------- */
+function getSession(ds) {
+  if (!store.sessions[ds]) store.sessions[ds] = { date: ds, status: "pending", entryDone: false, exitDone: { A: false, B: false }, trades: [], watch: [], note: "" };
+  return store.sessions[ds];
+}
+let busy = false;
+const notional = () => Math.max(5, +store.settings.notional || 100);
+
+async function doEntry(ds, opts = {}) {
+  const sess = opts.dry ? { trades: [], watch: [] } : getSession(ds);
+  const tEntry = atUtc(ds, CFG.ENTRY), start = nowMs();
+  const gapMin = opts.gapMin != null ? opts.gapMin : CFG.GAP_MIN;
+  const results = await Promise.all(CFG.SYMBOLS.map(async (sym) => {
+    try {
+      const [ref, snap] = await Promise.all([loadRef(ds, sym, false), snapshot(sym, notional())]);
+      return { sym, ref, snap, err: null };
+    } catch (e) { return { sym, ref: null, snap: null, err: String(e.message || e) }; }
+  }));
+  const watch = [], trades = [];
+  for (const r of results) {
+    if (r.err || !r.ref || !r.ref.ok || !r.snap) {
+      watch.push({ sym: r.sym, gap: NaN, note: r.err || (r.ref && r.ref.note) || "no data" });
+      log("ENTRY " + r.sym + ": skipped (" + (r.err || (r.ref && r.ref.note)) + ")");
+      continue;
+    }
+    const gap = (r.snap.mid / r.ref.price - 1) * 100;
+    watch.push({ sym: r.sym, gap, mid: r.snap.mid });
+    const isShort = gap >= gapMin, isLongShadow = gap <= -gapMin && !opts.forceShort;
+    if (!isShort && !isLongShadow && !opts.forceShort) continue;
+    trades.push({
+      sym: r.sym, side: isShort || opts.forceShort ? "short" : "long", shadow: !(isShort || opts.forceShort),
+      gap, ref: r.ref.price, top1: false,
+      entry: Object.assign({}, r.snap, { lateSec: (r.snap.t - tEntry) / 1000, scheduled: tEntry }),
+      res: {}
+    });
+  }
+  if (!opts.dry && results.every((r) => r.err || !r.ref || !r.ref.ok || !r.snap)) {
+    throw new Error("no usable data for any symbol at entry (will retry until the late-entry window closes)");
+  }
+  const shorts = trades.filter((t) => !t.shadow).sort((a, b) => b.gap - a.gap);
+  if (shorts.length) shorts[0].top1 = true;
+  sess.watch = watch; sess.trades = trades;
+  if (!opts.dry) {
+    sess.entryDone = true; sess.status = "in-position";
+    if (!trades.length) { sess.note = "no symbol passed the gap filter"; }
+    saveStore();
+  }
+  log((opts.dry ? "DRY " : "") + "ENTRY done in " + (nowMs() - start) + " ms: " + shorts.length + " short, " + (trades.length - shorts.length) + " shadow-long, " + CFG.SYMBOLS.length + " checked");
+  return sess;
+}
+
+async function doExit(ds, which, opts = {}) {
+  const sess = opts.sess || getSession(ds);
+  const tExit = atUtc(ds, which === "A" ? CFG.EXIT_A : CFG.EXIT_B);
+  const snaps = await Promise.all(sess.trades.map(async (t) => {
+    try { return await snapshot(t.sym, notional()); } catch (e) { return { err: String(e.message || e) }; }
+  }));
+  sess.trades.forEach((t, i) => {
+    const s = snaps[i];
+    if (!s || s.err) { t.res[which] = { missed: true, note: s && s.err }; log("EXIT " + which + " " + t.sym + ": failed (" + (s && s.err) + ")"); return; }
+    const e = t.entry;
+    let gross, ideal;
+    if (t.side === "short") {
+      gross = (e.vwapSell - s.vwapBuy) / e.vwapSell * 100;
+      ideal = (e.mid - s.mid) / e.mid * 100;
+    } else {
+      gross = (s.vwapSell - e.vwapBuy) / e.vwapBuy * 100;
+      ideal = (s.mid - e.mid) / e.mid * 100;
+    }
+    const lateSec = opts.dry ? 0 : (s.t - tExit) / 1000;
+    t.res[which] = {
+      t: s.t, lateSec, valid: lateSec <= CFG.MAX_LATE_EXIT_SEC, depthOk: s.depthOk && e.depthOk,
+      mid: s.mid, bid: s.bid, ask: s.ask, vwap: t.side === "short" ? s.vwapBuy : s.vwapSell,
+      gross, ideal, net: gross - CFG.FEE_PCT
+    };
+  });
+  if (!opts.dry) {
+    sess.exitDone[which] = true;
+    if (sess.exitDone.A && sess.exitDone.B) sess.status = "complete";
+    saveStore();
+  }
+  log((opts.dry ? "DRY " : "") + "EXIT " + which + " recorded for " + sess.trades.length + " trade(s)");
+}
+
+function settleStale(now) {
+  let changed = false;
+  for (const ds of Object.keys(store.sessions)) {
+    const s = store.sessions[ds];
+    for (const which of ["A", "B"]) {
+      const tEx = atUtc(ds, which === "A" ? CFG.EXIT_A : CFG.EXIT_B);
+      if (s.entryDone && !s.exitDone[which] && now > tEx + CFG.STALE_EXIT_SEC * 1000) {
+        s.trades.forEach((t) => { if (!t.res[which]) t.res[which] = { missed: true, note: "page was not open at exit time" }; });
+        s.exitDone[which] = true; changed = true;
+        log("EXIT " + which + " for " + ds + " was missed (page not open)");
+      }
+    }
+    if (s.entryDone && s.exitDone.A && s.exitDone.B && s.status !== "complete") { s.status = "complete"; changed = true; }
+    if (!s.entryDone && s.status === "pending" && now > atUtc(ds, CFG.ENTRY) + CFG.MAX_LATE_ENTRY_SEC * 1000) {
+      s.status = "missed"; s.note = "page was not open at 01:02:00 UTC"; changed = true;
+      log("Session " + ds + " missed (page not open at entry time)");
+    }
+  }
+  if (changed) saveStore();
+}
+
+/* ---------------- stats ---------------- */
+function mean(a) { return a.length ? a.reduce((x, y) => x + y, 0) / a.length : NaN; }
+function sd(a) { if (a.length < 2) return NaN; const m = mean(a); return Math.sqrt(a.reduce((x, y) => x + (y - m) * (y - m), 0) / (a.length - 1)); }
+function collect(which, top1Only) {
+  const out = [];
+  for (const ds of Object.keys(store.sessions).sort()) {
+    for (const t of store.sessions[ds].trades) {
+      if (t.shadow) continue;
+      const r = t.res && t.res[which];
+      if (!r || r.missed || !r.valid) continue;
+      if (top1Only && !t.top1) continue;
+      out.push({ ds, t, r });
+    }
+  }
+  return out;
+}
+function computeStats(which, top1Only) {
+  const rows = collect(which, top1Only);
+  const byDay = {};
+  rows.forEach((x) => { (byDay[x.ds] = byDay[x.ds] || []).push(x.r.net); });
+  const days = Object.keys(byDay), dayVals = days.map((d) => mean(byDay[d]));
+  const nets = rows.map((x) => x.r.net), wins = nets.filter((v) => v > 0), losses = nets.filter((v) => v <= 0);
+  const dm = mean(dayVals), dsd = sd(dayVals);
+  return {
+    n: rows.length, days: days.length, avgTrade: mean(nets), avgDay: dm,
+    tstat: dayVals.length >= 3 && dsd > 0 ? dm / (dsd / Math.sqrt(dayVals.length)) : NaN,
+    win: nets.length ? wins.length / nets.length * 100 : NaN, avgWin: mean(wins), avgLoss: mean(losses),
+    worst: nets.length ? Math.min.apply(null, nets) : NaN,
+    ideal: mean(rows.map((x) => x.r.ideal)), slip: mean(rows.map((x) => x.r.ideal - x.r.gross)),
+    usd: mean(nets) / 100 * notional(), dayVals
+  };
+}
+function guidance() {
+  const s = computeStats("B", false);
+  const f = (v, d = 2) => (Number.isFinite(v) ? v.toFixed(d) : "n/a");
+  if (s.days < 3) return { cls: "warn", text: "COLLECTING DATA: " + s.days + " of " + CFG.TARGET_DAYS + " signal days so far. Too early for any conclusion. Keep the page open at the right time each weekday." };
+  if (s.days < CFG.TARGET_DAYS) {
+    if (s.days >= 10 && s.avgDay < -0.3) return { cls: "bad", text: "EARLY WARNING: after " + s.days + " signal days the 02:00 exit averages " + f(s.avgDay) + "% per day. Keep collecting to " + CFG.TARGET_DAYS + " days, but do NOT put real money in." };
+    return { cls: "warn", text: "COLLECTING DATA: " + s.days + " of " + CFG.TARGET_DAYS + " signal days. Average so far " + f(s.avgDay) + "% per day (02:00 exit). Do not decide yet." };
+  }
+  if (s.avgDay > 0.15 && s.tstat >= 1.5) return { cls: "good", text: "HOLDING UP: " + s.days + " days, average " + f(s.avgDay) + "% per day with real fills (t=" + f(s.tstat, 1) + "). This is the minimum to consider a tiny live test (for example $5 to $10 of margin). It is not proof." };
+  if (s.avgDay > 0) return { cls: "warn", text: "UNCLEAR: " + s.days + " days, average " + f(s.avgDay) + "% per day (t=" + f(s.tstat, 1) + "). Positive but not convincing. Keep collecting up to about 40 days." };
+  return { cls: "bad", text: "FAILING: " + s.days + " days, average " + f(s.avgDay) + "% per day with real fills. The backtest edge did not survive real prices. Stop here." };
+}
+
+/* ---------------- rendering ---------------- */
+const fmt = (v, d = 2) => (Number.isFinite(v) ? v.toFixed(d) : "–");
+const cls = (v) => (Number.isFinite(v) ? (v > 0 ? "pos" : v < 0 ? "neg" : "") : "");
+const priceFmt = (p) => (Number.isFinite(p) ? (p >= 100 ? p.toFixed(2) : p >= 1 ? p.toFixed(4) : p.toFixed(5)) : "–");
+let watchState = {};   // sym -> {bid, ask, spreadPct, t}
+let watchAt = 0, watchErr = "";
+
+function renderStats() {
+  const tb = $("statsTbl").querySelector("tbody");
+  const rowsHtml = [["A", "01:32", false], ["B", "02:00", false], ["B", "02:00 (1 trade/day: biggest gap)", true]].map(([w, label, top]) => {
+    const s = computeStats(w, top);
+    return "<tr><td>" + esc(label) + "</td><td>" + s.n + "</td><td>" + s.days + "</td>" +
+      "<td class='" + cls(s.avgTrade) + "'>" + fmt(s.avgTrade) + "%</td><td class='" + cls(s.avgDay) + "'>" + fmt(s.avgDay) + "%</td>" +
+      "<td>" + fmt(s.tstat, 1) + "</td><td>" + fmt(s.win, 0) + "%</td><td class='pos'>" + fmt(s.avgWin) + "%</td><td class='neg'>" + fmt(s.avgLoss) + "%</td>" +
+      "<td class='neg'>" + fmt(s.worst) + "%</td><td>" + fmt(s.ideal) + "%</td><td>" + fmt(s.slip) + "%</td><td class='" + cls(s.usd) + "'>$" + fmt(s.usd) + "</td></tr>";
+  }).join("");
+  tb.innerHTML = rowsHtml;
+  const g = guidance(), s = computeStats("B", false);
+  $("guidance").innerHTML = "<div class='banner " + g.cls + "'>" + esc(g.text) + "</div>";
+  const pct = Math.min(100, s.days / CFG.TARGET_DAYS * 100);
+  $("progBar").style.width = pct + "%";
+  $("progTxt").textContent = s.days + " / " + CFG.TARGET_DAYS + " signal days";
+}
+function renderTrades() {
+  const rows = [];
+  for (const ds of Object.keys(store.sessions).sort().reverse()) {
+    const s = store.sessions[ds];
+    if (!s.trades.length) {
+      rows.push("<tr><td>" + ds + "</td><td colspan='9' class='mute' style='text-align:left'>" + esc(s.status + (s.note ? ": " + s.note : "")) + "</td></tr>");
+      continue;
+    }
+    for (const t of s.trades) {
+      const a = t.res.A, b = t.res.B;
+      const cell = (r) => (!r ? "<span class='mute'>pending</span>" : r.missed ? "<span class='mute'>missed</span>" : priceFmt(r.vwap) + (r.valid ? "" : " <span class='neg'>(late)</span>"));
+      const net = (r) => (!r || r.missed ? "–" : "<span class='" + cls(r.net) + "'>" + fmt(r.net) + "%</span>");
+      rows.push("<tr><td>" + ds + "</td><td>" + esc(t.sym) + "</td><td>" + (t.shadow ? "<span class='mute'>long (shadow)</span>" : "short") + "</td><td>" + fmt(t.gap) + "%</td><td>" + (t.top1 ? "yes" : "") + "</td>" +
+        "<td>" + priceFmt(t.side === "short" ? t.entry.vwapSell : t.entry.vwapBuy) + (t.entry.lateSec > 5 ? " <span class='neg'>(late " + fmt(t.entry.lateSec, 0) + "s)</span>" : "") + "</td>" +
+        "<td>" + cell(a) + "</td><td>" + net(a) + "</td><td>" + cell(b) + "</td><td>" + net(b) + "</td></tr>");
+    }
+  }
+  $("tradeTbl").querySelector("tbody").innerHTML = rows.slice(0, 120).join("") || "<tr><td colspan='10' class='mute' style='text-align:left'>No trades yet.</td></tr>";
+  $("tradeNote").textContent = rows.length > 120 ? "Showing the newest 120 rows. Export CSV for everything." : "";
+}
+function renderWatch(ds) {
+  const rows = CFG.SYMBOLS.map((sym) => {
+    const w = watchState[sym] || {}, ref = refCache[ds] && refCache[ds][sym];
+    const mid = (w.bid + w.ask) / 2, gap = ref && ref.ok && Number.isFinite(mid) ? (mid / ref.price - 1) * 100 : NaN;
+    let sig = "<span class='mute'>–</span>";
+    if (Number.isFinite(gap)) sig = gap >= CFG.GAP_MIN ? "<span class='chip good'>SHORT</span>" : gap <= -CFG.GAP_MIN ? "<span class='chip'>long (shadow)</span>" : "<span class='mute'>no trade</span>";
+    return "<tr><td>" + esc(sym) + "</td><td>" + priceFmt(w.bid) + "</td><td>" + priceFmt(w.ask) + "</td><td>" + fmt(w.spreadPct, 3) + "%</td><td>" +
+      (ref ? (ref.ok ? priceFmt(ref.price) : ref.pending ? "<span class='mute' title='" + esc(ref.note) + "'>waits for " + CFG.REF_TIME.slice(0, 5) + " UTC</span>" : "<span class='neg' title='" + esc(ref.note) + "'>unavailable</span>") : "…") + "</td><td class='" + cls(gap) + "'>" + fmt(gap) + "%</td><td>" + sig + "</td></tr>";
+  }).join("");
+  $("watchTbl").querySelector("tbody").innerHTML = rows;
+  $("watchAge").textContent = watchAt ? "(updated " + hms(watchAt) + " UTC" + (watchErr ? ", error: " + esc(watchErr) : "") + ")" : "";
+}
+function banners() {
+  const b = [];
+  if (!storageOk) b.push("<div class='banner bad'>This browser is not allowing saved data (private mode?). Results will be lost when you close the page. Use a normal window.</div>");
+  if (document.hidden) b.push("<div class='banner warn'>This tab is in the background. Browsers slow timers down then, so entry or exit could be late. Keep this tab visible and the screen on around the event times.</div>");
+  $("banners").innerHTML = b.join("");
+}
+
+/* ---------------- main loop ---------------- */
+let currentDs = null, lastWatchFetch = 0, lastRefTry = 0, lastRender = 0, lastClockSync = 0;
+async function refreshWatch(ds) {
+  try {
+    const out = await Promise.all(CFG.SYMBOLS.map((s) => api("/fapi/v1/ticker/bookTicker?symbol=" + s)));
+    out.forEach((bk, i) => { const bid = +bk.bidPrice, ask = +bk.askPrice; watchState[CFG.SYMBOLS[i]] = { bid, ask, spreadPct: (ask / bid - 1) * 100 }; });
+    watchAt = nowMs(); watchErr = "";
+  } catch (e) { watchErr = String(e.message || e); watchAt = nowMs(); }
+  renderWatch(ds);
+}
+async function tick() {
+  const now = nowMs();
+  const ds = sessionDateFor(now);
+  currentDs = ds;
+  const tE = atUtc(ds, CFG.ENTRY), tA = atUtc(ds, CFG.EXIT_A), tB = atUtc(ds, CFG.EXIT_B);
+  const sess = store.sessions[ds] || { status: "pending", entryDone: false, exitDone: { A: false, B: false }, trades: [], note: "" };
+
+  $("clkUtc").textContent = hms(now);
+  $("clkPkt").textContent = hms(now, 5);
+  $("visChip").textContent = document.hidden ? "tab hidden" : "tab visible";
+  $("visChip").className = "chip" + (document.hidden ? " warn" : " good");
+
+  let next, nextLabel, phase;
+  if (now < tE - 600e3) { phase = "waiting"; next = tE; nextLabel = "entry " + CFG.ENTRY.slice(0, 5) + " UTC"; }
+  else if (now < tE) { phase = "get ready"; next = tE; nextLabel = "entry"; }
+  else if (now < tA) { phase = sess.entryDone ? "in paper position" : "entry missed"; next = tA; nextLabel = "exit 01:32"; }
+  else if (now < tB) { phase = sess.entryDone ? "in paper position" : "entry missed"; next = tB; nextLabel = "exit 02:00"; }
+  else { phase = "done for today"; next = atUtc(sessionDateFor(tB + 11 * 60e3), CFG.ENTRY); nextLabel = "next entry"; }
+  $("nextEv").textContent = human(next - now);
+  $("nextEvSub").textContent = nextLabel + " (" + hms(next, 5) + " Pakistan, " + ymd(new Date(next + 5 * 3600e3)) + ")";
+  $("phaseChip").textContent = phase;
+  $("phaseChip").className = "chip" + (phase === "get ready" ? " warn" : phase === "in paper position" ? " good" : phase === "entry missed" ? " bad" : "");
+  $("sessLine").textContent = "Session " + ds + (CFG.HOLIDAYS.includes(ds) ? " (holiday!)" : "") + " | status: " + sess.status;
+
+  // scheduled actions (guarded so only one runs at a time)
+  let acted = false;
+  if (!busy) {
+    try {
+      if (!sess.entryDone && sess.status === "pending" && now >= tE) {
+        acted = true;
+        busy = true;
+        if (now - tE <= CFG.MAX_LATE_ENTRY_SEC * 1000) { await doEntry(ds); }
+        else { const ms = getSession(ds); ms.status = "missed"; ms.note = "page opened too late for the entry"; saveStore(); log("Entry skipped: page was not ready at 01:02:00"); }
+      } else if (sess.entryDone && sess.trades.length && !sess.exitDone.A && now >= tA && now - tA <= CFG.STALE_EXIT_SEC * 1000) {
+        acted = true; busy = true; await doExit(ds, "A");
+      } else if (sess.entryDone && sess.trades.length && !sess.exitDone.B && now >= tB && now - tB <= CFG.STALE_EXIT_SEC * 1000) {
+        acted = true; busy = true; await doExit(ds, "B");
+      } else if (sess.entryDone && !sess.trades.length && now > tB && sess.status !== "complete") {
+        const cs = getSession(ds); cs.status = "complete"; saveStore();
+      }
+    } catch (e) { log("ERROR in scheduled action: " + (e.message || e)); }
+    finally { busy = false; }
+    settleStale(nowMs());
+    if (acted || now - lastRender > 5000) { lastRender = now; renderStats(); renderTrades(); }
+  }
+
+  if (now - lastClockSync > 600e3 && !window.__fakeNow) { lastClockSync = now; syncClock(); }
+  // refs and live prices
+  if (now - lastRefTry > 60e3) {
+    lastRefTry = now;
+    CFG.SYMBOLS.forEach((s) => { const c = refCache[ds] && refCache[ds][s]; if (!c || !c.ok) loadRef(ds, s, true).then(() => renderWatch(ds)); });
+  }
+  const near = now > tE - 30 * 60e3 && now < tB + 2 * 60e3;
+  if (now - lastWatchFetch > (near ? 5e3 : 30e3)) { lastWatchFetch = now; refreshWatch(ds); }
+  banners();
+}
+
+/* ---------------- tools ---------------- */
+async function testConnection() {
+  const ds = currentDs || sessionDateFor(nowMs());
+  log("Testing connection to Binance public API...");
+  for (const sym of CFG.SYMBOLS) {
+    const t0 = Date.now();
+    try {
+      const snap = await snapshot(sym, notional());
+      const ref = await loadRef(ds, sym, true);
+      log("OK   " + sym + "  price " + priceFmt(snap.mid) + "  spread " + fmt(snap.spreadPct, 3) + "%  latency " + (Date.now() - t0) + " ms  depth " + (snap.depthOk ? "enough" : "THIN for $" + notional()) + "  prior close " + (ref.ok ? priceFmt(ref.price) : "MISSING (" + ref.note + ")"));
+    } catch (e) { log("FAIL " + sym + ": " + (e.message || e)); }
+  }
+  renderWatch(ds);
+  log("Test finished. If every line says OK, the page will work at the event times.");
+}
+async function dryRun() {
+  const ds = currentDs || sessionDateFor(nowMs());
+  log("DRY RUN: pretending every symbol is a short, then exiting after 8 seconds. Nothing is saved.");
+  try {
+    const sess = await doEntry(ds, { dry: true, gapMin: -1e9, forceShort: true });
+    await new Promise((r) => setTimeout(r, 8000));
+    await doExit(ds, "B", { dry: true, sess });
+    sess.trades.forEach((t) => { const r = t.res.B; log("  " + t.sym + ": ideal " + fmt(r.ideal, 3) + "%  real-fill " + fmt(r.gross, 3) + "%  net after fees " + fmt(r.net, 3) + "%  (entry spread " + fmt(t.entry.spreadPct, 3) + "%)"); });
+    log("DRY RUN finished. This only checks the machinery, not the strategy.");
+  } catch (e) { log("DRY RUN failed: " + (e.message || e)); }
+}
+let wakeLock = null, wantLock = false;
+async function toggleLock() {
+  try {
+    if (wakeLock) { wantLock = false; await wakeLock.release(); wakeLock = null; $("lockChip").textContent = "screen lock: off"; $("btnLock").textContent = "Keep screen awake"; return; }
+    if (!("wakeLock" in navigator)) { log("Screen wake lock is not supported here. Keep the screen on manually."); return; }
+    wantLock = true;
+    wakeLock = await navigator.wakeLock.request("screen");
+    wakeLock.addEventListener("release", () => { wakeLock = null; $("lockChip").textContent = "screen lock: off"; });
+    $("lockChip").textContent = "screen lock: ON"; $("btnLock").textContent = "Release screen lock";
+  } catch (e) { log("Wake lock failed: " + (e.message || e)); }
+}
+document.addEventListener("visibilitychange", async () => {
+  if (!document.hidden && wantLock && !wakeLock && "wakeLock" in navigator) {
+    try { wakeLock = await navigator.wakeLock.request("screen"); $("lockChip").textContent = "screen lock: ON"; } catch (e) { /* ignore */ }
+  }
+  banners();
+});
+function download(name, text, type) {
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([text], { type }));
+  a.download = name; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+}
+function exportCsv() {
+  const head = ["date", "symbol", "side", "shadow", "top1", "gap_pct", "prior_close", "entry_time_utc", "entry_late_s", "entry_latency_ms", "entry_mid", "entry_bid", "entry_ask", "entry_spread_pct", "entry_vwap_fill", "depth_ok", "notional_usd",
+    "exitA_time_utc", "exitA_late_s", "exitA_valid", "exitA_mid", "exitA_vwap_fill", "exitA_ideal_pct", "exitA_gross_pct", "exitA_net_pct",
+    "exitB_time_utc", "exitB_late_s", "exitB_valid", "exitB_mid", "exitB_vwap_fill", "exitB_ideal_pct", "exitB_gross_pct", "exitB_net_pct"];
+  const lines = [head.join(",")];
+  for (const ds of Object.keys(store.sessions).sort()) {
+    for (const t of store.sessions[ds].trades) {
+      const e = t.entry, r = (w) => t.res[w] || {};
+      const x = (o) => (o.missed ? ["missed", "", "", "", "", "", "", ""] : o.t ? [new Date(o.t).toISOString(), o.lateSec, o.valid, o.mid, o.vwap, o.ideal, o.gross, o.net] : ["", "", "", "", "", "", "", ""]);
+      const row = [ds, t.sym, t.side, t.shadow, t.top1, t.gap, t.ref, new Date(e.t).toISOString(), e.lateSec, e.latMs, e.mid, e.bid, e.ask, e.spreadPct, t.side === "short" ? e.vwapSell : e.vwapBuy, e.depthOk, notional()].concat(x(r("A")), x(r("B")));
+      lines.push(row.map((v) => (v === undefined || v === null ? "" : Number.isFinite(v) ? +v.toFixed(6) : v)).join(","));
+    }
+  }
+  download("hk-open-paper-trades.csv", lines.join("\n"), "text/csv");
+}
+function restoreJson(file) {
+  const rd = new FileReader();
+  rd.onload = () => {
+    try {
+      const s = JSON.parse(rd.result);
+      if (!s || !s.sessions) throw new Error("not a backup file");
+      let added = 0;
+      for (const ds of Object.keys(s.sessions)) { if (!store.sessions[ds]) { store.sessions[ds] = s.sessions[ds]; added++; } }
+      saveStore(); log("Restore: added " + added + " session(s) that were not already here."); renderStats(); renderTrades();
+    } catch (e) { log("Restore failed: " + (e.message || e)); }
+  };
+  rd.readAsText(file);
+}
+
+/* ---------------- start ---------------- */
+function init() {
+  $("inNotional").value = notional();
+  $("inNotional").addEventListener("change", () => { store.settings.notional = Math.max(5, +$("inNotional").value || 100); saveStore(); renderStats(); log("Position size set to $" + notional()); });
+  $("btnTest").addEventListener("click", testConnection);
+  $("btnDry").addEventListener("click", dryRun);
+  $("btnLock").addEventListener("click", toggleLock);
+  $("btnCsv").addEventListener("click", exportCsv);
+  $("btnBackup").addEventListener("click", () => download("hk-open-paper-backup.json", JSON.stringify(store), "application/json"));
+  $("btnRestore").addEventListener("click", () => $("fileRestore").click());
+  $("fileRestore").addEventListener("change", (e) => { if (e.target.files[0]) restoreJson(e.target.files[0]); e.target.value = ""; });
+  $("btnReset").addEventListener("click", () => {
+    if (prompt("This deletes ALL saved paper-trading data in this browser. Type RESET to confirm.") === "RESET") { store = freshStore(); saveStore(); renderStats(); renderTrades(); log("All data deleted."); }
+  });
+  log("Page started. Press 'Test connection' once, and keep this page open and visible from 06:00 to 07:05 AM Pakistan time.");
+  renderStats(); renderTrades();
+  tick();
+  syncClock(); lastClockSync = nowMs();
+  setInterval(() => { tick(); }, 250);
+}
+window.HK_TEST = { tick, doEntry, doExit, fillPrice, computeStats, sessionDateFor, prevWeekday, getStore: () => store, setStore: (s) => { store = s; }, CFG };
+init();
+</script>
+</body>
+</html>
