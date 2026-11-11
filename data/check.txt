@@ -1,0 +1,21 @@
+Connection check 2026-11-11 04:50:58 UTC
+API: https://fapi.binance.com
+TIME FAIL: HTTP 451 {
+  "code": 0,
+  "msg": "Service unavailable from a restricted location according to 'b. Eligibility' in https://www.binance.com/en/terms. Please contact custom
+FAIL HK1810USDT   HTTP 451 {
+  "code": 0,
+  "msg": "Service unavailable from a restricted location according to 'b. Eligibility' in https://www.binance.com/en/terms. Please contact custom
+FAIL ZHONGJIUSDT  HTTP 451 {
+  "code": 0,
+  "msg": "Service unavailable from a restricted location according to 'b. Eligibility' in https://www.binance.com/en/terms. Please contact custom
+FAIL ZHIPUUSDT    HTTP 451 {
+  "code": 0,
+  "msg": "Service unavailable from a restricted location according to 'b. Eligibility' in https://www.binance.com/en/terms. Please contact custom
+FAIL MINIMAXUSDT  HTTP 451 {
+  "code": 0,
+  "msg": "Service unavailable from a restricted location according to 'b. Eligibility' in https://www.binance.com/en/terms. Please contact custom
+FAIL BYDUSDT      HTTP 451 {
+  "code": 0,
+  "msg": "Service unavailable from a restricted location according to 'b. Eligibility' in https://www.binance.com/en/terms. Please contact custom
+RESULT: PROBLEM - see FAIL lines. HTTP 451/403 means Binance blocks this server's location.
