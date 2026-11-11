@@ -1,21 +1,9 @@
-Connection check 2026-11-11 04:50:58 UTC
+Connection check 2026-11-11 04:53:14 UTC
 API: https://fapi.binance.com
-TIME FAIL: HTTP 451 {
-  "code": 0,
-  "msg": "Service unavailable from a restricted location according to 'b. Eligibility' in https://www.binance.com/en/terms. Please contact custom
-FAIL HK1810USDT   HTTP 451 {
-  "code": 0,
-  "msg": "Service unavailable from a restricted location according to 'b. Eligibility' in https://www.binance.com/en/terms. Please contact custom
-FAIL ZHONGJIUSDT  HTTP 451 {
-  "code": 0,
-  "msg": "Service unavailable from a restricted location according to 'b. Eligibility' in https://www.binance.com/en/terms. Please contact custom
-FAIL ZHIPUUSDT    HTTP 451 {
-  "code": 0,
-  "msg": "Service unavailable from a restricted location according to 'b. Eligibility' in https://www.binance.com/en/terms. Please contact custom
-FAIL MINIMAXUSDT  HTTP 451 {
-  "code": 0,
-  "msg": "Service unavailable from a restricted location according to 'b. Eligibility' in https://www.binance.com/en/terms. Please contact custom
-FAIL BYDUSDT      HTTP 451 {
-  "code": 0,
-  "msg": "Service unavailable from a restricted location according to 'b. Eligibility' in https://www.binance.com/en/terms. Please contact custom
-RESULT: PROBLEM - see FAIL lines. HTTP 451/403 means Binance blocks this server's location.
+Server clock offset: +152 ms
+OK   HK1810USDT   price 30.5500 spread 0.065% latency 579 ms depth enough prior close 30.5900
+OK   ZHONGJIUSDT  price 81.4750 spread 0.037% latency 468 ms depth enough prior close 75.5400
+OK   ZHIPUUSDT    price 61.4000 spread 0.033% latency 469 ms depth enough prior close 61.4800
+OK   MINIMAXUSDT  price 21.8750 spread 0.046% latency 468 ms depth enough prior close 22.0200
+OK   BYDUSDT      price 8.9250 spread 0.112% latency 546 ms depth enough prior close 9.2200
+RESULT: ALL OK - the daily session can run from here.
