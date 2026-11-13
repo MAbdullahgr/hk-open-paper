@@ -1,6 +1,6 @@
 # HK Open Paper Trader - summary
 
-Updated: 2026-11-12 07:09 UTC
+Updated: 2026-11-13 06:44 UTC
 
 **COLLECTING DATA: 0 of 20 signal days so far. Too early for any conclusion.**
 
@@ -18,4 +18,5 @@ Net = after 0.10% fees and real order-book fills for $100. Ideal = mid-to-mid (w
 
 | Date | Status | Short trades | Shadow longs | Note |
 |---|---|---|---|---|
+| 2026-11-13 | missed | 0 | 0 | job started too late (06:44:47 UTC) |
 | 2026-11-12 | missed | 0 | 0 | job started too late (07:09:01 UTC) |
