@@ -1,0 +1,12 @@
+{
+ "date": "2026-11-20",
+ "status": "missed",
+ "note": "job started too late (07:14:39 UTC)",
+ "entry_done": false,
+ "exit_done": {
+  "A": false,
+  "B": false
+ },
+ "trades": [],
+ "watch": []
+}
